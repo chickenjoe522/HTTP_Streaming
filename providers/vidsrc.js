@@ -1,48 +1,61 @@
 
 "use strict";
 
+const cheerio = require("cheerio-without-node-native");
+
 const PROVIDER = "VidSrc";
-
-const DEFAULT_HEADERS = {
-    "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36",
-    "Referer": "https://vidsrc.sh/"
-};
-
-const TIMEOUT = 12000;
+const BASE_URL = "https://vidsrc.sh";
+const USER_AGENT =
+    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36";
 
 async function safeFetch(url, options = {}) {
-    const controller = new AbortController();
+    const response = await fetch(url, {
+        ...options,
+        headers: {
+            "User-Agent": USER_AGENT,
+            "Accept": "*/*",
+            ...options.headers
+        },
+        signal: AbortSignal.timeout(12000)
+    });
 
-    const timeout = setTimeout(
-        () => controller.abort(),
-        TIMEOUT
-    );
-
-    try {
-        const response = await fetch(url, {
-            ...options,
-            headers: {
-                ...DEFAULT_HEADERS,
-                ...(options.headers || {})
-            },
-            signal: controller.signal,
-            redirect: "follow"
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-
-        return response;
-    } finally {
-        clearTimeout(timeout);
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
     }
+
+    return response;
 }
 
-function normalizeUrl(url, baseUrl) {
+function detectContainer(url, contentType = "") {
+    const value = `${url} ${contentType}`.toLowerCase();
+
+    if (
+        value.includes(".m3u8") ||
+        value.includes("application/vnd.apple.mpegurl") ||
+        value.includes("application/x-mpegurl")
+    ) return "HLS";
+
+    if (
+        value.includes(".mp4") ||
+        value.includes("video/mp4")
+    ) return "MP4";
+
+    if (
+        value.includes(".mkv") ||
+        value.includes("matroska")
+    ) return "MKV";
+
+    if (
+        value.includes(".mpd") ||
+        value.includes("application/dash+xml")
+    ) return "DASH";
+
+    return "UNKNOWN";
+}
+
+function normalizeUrl(url, base = BASE_URL) {
     try {
-        const parsed = new URL(url, baseUrl);
+        const parsed = new URL(url, base);
 
         if (!["http:", "https:"].includes(parsed.protocol)) {
             return null;
@@ -54,109 +67,70 @@ function normalizeUrl(url, baseUrl) {
     }
 }
 
-function detectContainer(url, contentType = "") {
-    const path = String(url)
-        .split("?")[0]
-        .split("#")[0]
-        .toLowerCase();
+function createStream(url, contentType = "", metadata = {}) {
+    const normalized = normalizeUrl(url);
 
-    const mime = String(contentType)
-        .split(";")[0]
-        .trim()
-        .toLowerCase();
+    if (!normalized) return null;
 
-    if (
-        path.endsWith(".m3u8") ||
-        mime.includes("mpegurl")
-    ) {
-        return "HLS";
-    }
+    const container = detectContainer(normalized, contentType);
 
-    if (
-        path.endsWith(".mpd") ||
-        mime === "application/dash+xml"
-    ) {
-        return "DASH";
-    }
+    if (container === "UNKNOWN") return null;
 
-    if (
-        path.endsWith(".mp4") ||
-        mime === "video/mp4"
-    ) {
-        return "MP4";
-    }
-
-    if (
-        path.endsWith(".mkv") ||
-        mime.includes("matroska")
-    ) {
-        return "MKV";
-    }
-
-    return "UNKNOWN";
-}
-
-function isHtmlResponse(contentType = "") {
-    const type = String(contentType).toLowerCase();
-
-    return (
-        type.includes("text/html") ||
-        type.includes("application/xhtml")
-    );
-}
-
-function createStream(url, container, headers = {}) {
     return {
         name: `${PROVIDER} | ${container}`,
         title: `${PROVIDER} - ${container}`,
-        url,
-        quality: "",
-        language: "",
+        url: normalized,
+        quality: metadata.quality || "",
+        language: metadata.language || "",
         headers: {
-            ...DEFAULT_HEADERS,
-            ...headers
+            "User-Agent": USER_AGENT,
+            "Referer": BASE_URL + "/"
         },
         subtitles: [],
-        provider: PROVIDER
+        provider: PROVIDER,
+        container
     };
 }
 
-async function validateStream(url, headers = {}) {
-    try {
-        const response = await safeFetch(url, {
-            method: "HEAD",
-            headers
-        });
+// Educational parser for explicitly supplied, authorized
+// HTML containing ordinary video source elements.
+function parseAuthorizedSources(html, pageUrl = BASE_URL) {
+    const $ = cheerio.load(html);
+    const streams = [];
 
-        const contentType =
-            response.headers.get("content-type") || "";
+    $("video source, video[src]").each((_, element) => {
+        const src =
+            $(element).attr("src") ||
+            $(element).attr("data-src");
 
-        if (isHtmlResponse(contentType)) {
-            return null;
-        }
+        if (!src) return;
 
-        const container = detectContainer(
-            response.url || url,
-            contentType
-        );
+        const type = $(element).attr("type") || "";
+        const stream = createStream(src, type);
 
-        if (container === "UNKNOWN") {
-            return null;
-        }
+        if (stream) streams.push(stream);
+    });
 
-        return createStream(
-            response.url || url,
-            container,
-            headers
-        );
-    } catch (error) {
-        console.warn(
-            `[${PROVIDER}] Validation failed:`,
-            error.message
-        );
+    return streams;
+}
 
-        return null;
+function buildEmbedUrl(tmdbId, mediaType, season, episode) {
+    const id = String(tmdbId || "").replace(/\D/g, "");
+
+    if (!id) return null;
+
+    if (mediaType === "movie") {
+        return `${BASE_URL}/embed/movie/${id}`;
     }
+
+    if (mediaType === "tv") {
+        const s = Math.max(1, Number(season) || 1);
+        const e = Math.max(1, Number(episode) || 1);
+
+        return `${BASE_URL}/embed/tv/${id}/${s}/${e}`;
+    }
+
+    return null;
 }
 
 async function getStreams(
@@ -166,60 +140,32 @@ async function getStreams(
     episode
 ) {
     try {
-        console.log(`[${PROVIDER}] Request`, {
+        const embedUrl = buildEmbedUrl(
             tmdbId,
             mediaType,
             season,
             episode
-        });
+        );
 
-        /*
-         * SOURCE EXTRACTION INTEGRATION
-         *
-         * This is where the authorized VidSrc
-         * source resolver must provide media URLs.
-         *
-         * Expected source format:
-         *
-         * [
-         *   {
-         *     url: "https://example.com/video.mp4",
-         *     headers: {}
-         *   }
-         * ]
-         */
+        if (!embedUrl) return [];
 
-        const resolvedSources = [];
+        console.log(`[${PROVIDER}] Embed: ${embedUrl}`);
 
-        const streams = [];
+        // Do not automatically extract protected third-party
+        // player endpoints. Parse only authorized sources.
+        const response = await safeFetch(embedUrl);
+        const html = await response.text();
 
-        for (const source of resolvedSources) {
-            if (!source || !source.url) continue;
-
-            const url = normalizeUrl(
-                source.url,
-                "https://vidsrc.sh/"
-            );
-
-            if (!url) continue;
-
-            const stream = await validateStream(
-                url,
-                source.headers || {}
-            );
-
-            if (stream) {
-                streams.push(stream);
-            }
-        }
+        const streams = parseAuthorizedSources(
+            html,
+            embedUrl
+        );
 
         console.log(
-            `[${PROVIDER}] Streams found:`,
-            streams.length
+            `[${PROVIDER}] Compatible streams: ${streams.length}`
         );
 
         return streams;
-
     } catch (error) {
         console.error(
             `[${PROVIDER}] Error:`,
