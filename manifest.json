@@ -1,27 +1,14 @@
-{
-  "name": "HTTP Streaming",
-  "version": "1.0.0",
-  "description": "VidSrc movie and TV scraper",
-  "author": "HTTP Streaming",
-  "scrapers": [
-    {
+  {
       "id": "vidsrc",
-      "name": "VidSrc",
-      "description": "VidSrc movie and TV provider",
+      "name": "vidsrc",
+      "description": "High-Speed Direct Streaming for Movies (IMDb ID Extract)",
       "version": "1.0.0",
+      "author": "PirateZoro9",
+      "supportedTypes": ["movie", "tv"],
       "filename": "providers/vidsrc.js",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "contentLanguage": [
-        "en"
-      ],
       "enabled": true,
-      "formats": [],
-      "limited": false,
-      "disabledPlatforms": [],
-      "supportsExternalPlayer": true
+      "hasSettings": true,
+      "formats": ["mp4", "mkv", "m3u8"],
+      "logo": "https://i.postimg.cc/KzjPtYWY/imdb.png",
+      "contentLanguage": ["en", "hi"]
     }
-  ]
-}
