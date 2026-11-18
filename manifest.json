@@ -1,28 +1,22 @@
 {
-  "id": "com.httpstreaming.vidsrc",
-  "version": "1.0.0",
   "name": "HTTP Streaming",
-  "description": "VidSrc Movies and TV Shows",
-  "resources": [
-    "catalog"
-  ],
-  "types": [
-    "movie",
-    "series"
-  ],
-  "idPrefixes": [
-    "tt"
-  ],
-  "catalogs": [
+  "version": "1.0.0",
+  "scrapers": [
     {
-      "type": "movie",
-      "id": "http_movies",
-      "name": "Movies"
-    },
-    {
-      "type": "series",
-      "id": "http_series",
-      "name": "TV Shows"
+      "id": "vidsrc",
+      "name": "VidSrc",
+      "description": "VidSrc movie and TV provider",
+      "version": "1.0.0",
+      "author": "HTTP Streaming",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/vidsrc.js",
+      "enabled": true,
+      "contentLanguage": [
+        "en"
+      ]
     }
   ]
 }
