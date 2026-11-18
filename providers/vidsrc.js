@@ -7,50 +7,42 @@ async function getStreams(tmdbId, type, season, episode) {
     try {
         if (!tmdbId) return [];
 
-        const isTV = type === "tv" || type === "series";
+        const isTV =
+            type === "tv" ||
+            type === "series";
 
-        let infoUrl;
         let embedUrl;
 
         if (isTV) {
-            infoUrl = season && episode
-                ? `${BASE_URL}/info/tv/${tmdbId}/${season}/${episode}.json`
-                : `${BASE_URL}/info/tv/${tmdbId}.json`;
+            if (!season || !episode) return [];
 
-            embedUrl = season && episode
-                ? `${BASE_URL}/embed/tv/${tmdbId}/${season}/${episode}`
-                : `${BASE_URL}/embed/tv/${tmdbId}`;
+            embedUrl =
+                `${BASE_URL}/embed/tv/` +
+                `${encodeURIComponent(tmdbId)}/` +
+                `${encodeURIComponent(season)}/` +
+                `${encodeURIComponent(episode)}`;
         } else {
-            infoUrl = `${BASE_URL}/info/movie/${tmdbId}.json`;
-            embedUrl = `${BASE_URL}/embed/movie/${tmdbId}`;
+            embedUrl =
+                `${BASE_URL}/embed/movie/` +
+                encodeURIComponent(tmdbId);
         }
 
-        const response = await fetch(infoUrl);
+        console.log(
+            `[HTTP Streaming] Embed: ${embedUrl}`
+        );
 
-        if (!response.ok) {
-            console.log("[HTTP Streaming] Title unavailable:", response.status);
-            return [];
-        }
+        // VidSrc returns an HTML embed page.
+        // Do not label it as MP4, HLS or DASH.
+        // Native playback cannot decode this webpage.
 
-        const info = await response.json();
-
-        if (info.status_code !== 200 || !info.embed_url) {
-            return [];
-        }
-
-        return [{
-            name: "VidSrc",
-            title: info.title || "VidSrc",
-            url: embedUrl,
-            externalUrl: embedUrl,
-            description: info.quality || "External player",
-            behaviorHints: {
-                bingeGroup: "http-streaming-vidsrc"
-            }
-        }];
+        return [];
 
     } catch (error) {
-        console.log("[HTTP Streaming]", error.message);
+        console.log(
+            "[HTTP Streaming] Error:",
+            error.message
+        );
+
         return [];
     }
 }
