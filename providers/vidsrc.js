@@ -5,60 +5,54 @@ const BASE_URL = "https://vidsrc.sh";
 
 async function getStreams(tmdbId, type, season, episode) {
     try {
-        if (!tmdbId || !type) {
-            return [];
-        }
+        if (!tmdbId) return [];
 
         const isTV = type === "tv" || type === "series";
 
+        let infoUrl;
         let embedUrl;
 
         if (isTV) {
-            if (!season || !episode) {
-                return [];
-            }
+            infoUrl = season && episode
+                ? `${BASE_URL}/info/tv/${tmdbId}/${season}/${episode}.json`
+                : `${BASE_URL}/info/tv/${tmdbId}.json`;
 
-            embedUrl =
-                `${BASE_URL}/embed/tv/` +
-                `${encodeURIComponent(tmdbId)}/` +
-                `${encodeURIComponent(season)}/` +
-                `${encodeURIComponent(episode)}`;
+            embedUrl = season && episode
+                ? `${BASE_URL}/embed/tv/${tmdbId}/${season}/${episode}`
+                : `${BASE_URL}/embed/tv/${tmdbId}`;
         } else {
-            embedUrl =
-                `${BASE_URL}/embed/movie/` +
-                `${encodeURIComponent(tmdbId)}`;
+            infoUrl = `${BASE_URL}/info/movie/${tmdbId}.json`;
+            embedUrl = `${BASE_URL}/embed/movie/${tmdbId}`;
         }
 
-        console.log(
-            `[HTTP Streaming] ${type}: ${tmdbId}`
-        );
+        const response = await fetch(infoUrl);
 
-        // Return the provider's public embed page.
-        // No hidden stream extraction or token decoding.
+        if (!response.ok) {
+            console.log("[HTTP Streaming] Title unavailable:", response.status);
+            return [];
+        }
 
-        return [
-            {
-                name: "VidSrc",
-                title: isTV
-                    ? `Season ${season} Episode ${episode}`
-                    : "VidSrc",
-                url: embedUrl,
-                behaviorHints: {
-                    bingeGroup: "http-streaming-vidsrc"
-                }
+        const info = await response.json();
+
+        if (info.status_code !== 200 || !info.embed_url) {
+            return [];
+        }
+
+        return [{
+            name: "VidSrc",
+            title: info.title || "VidSrc",
+            url: embedUrl,
+            externalUrl: embedUrl,
+            description: info.quality || "External player",
+            behaviorHints: {
+                bingeGroup: "http-streaming-vidsrc"
             }
-        ];
+        }];
 
     } catch (error) {
-        console.log(
-            "[HTTP Streaming] Error:",
-            error.message
-        );
-
+        console.log("[HTTP Streaming]", error.message);
         return [];
     }
 }
 
-module.exports = {
-    getStreams
-};
+module.exports = { getStreams };
