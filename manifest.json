@@ -1,17 +1,22 @@
 {
   "name": "HTTP Streaming",
-  "description": "HTTP Streaming movie and TV providers",
+  "description": "HTTP Streaming providers",
   "version": "1.0.0",
   "providers": [
     {
       "id": "vidsrc",
-      "name": "CVN-VidSrc",
+      "name": "VidSrc",
+      "description": "VidSrc movie and TV provider",
+      "version": "1.0.0",
+      "author": "HTTP Streaming",
       "filename": "providers/vidsrc.js",
       "enabled": true,
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ]
+      "supportedTypes": ["movie", "tv"],
+      "contentLanguage": ["en"],
+      "formats": ["mp4", "mkv"],
+      "limited": false,
+      "disabledPlatforms": [],
+      "supportsExternalPlayer": true
     }
   ]
 }
