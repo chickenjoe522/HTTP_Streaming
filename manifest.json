@@ -1,24 +1,22 @@
-{
-  "name": "HTTP Streaming",
-  "version": "1.0.0",
-  "scrapers": [
-    {
-      "id": "vidsrc",
-      "name": "vidsrc",
-      "description": "vidsrc direct links",
-      "version": "1.0.2",
-      "author": "Nuvio Team",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/vidsrc.js",
-      "enabled": true,
-      "formats": [
-        "mkv"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=4khdhub.click&sz=128",
-      "contentLanguage": [
-        "en"
-      ]
-    }
+[
+  {
+    "id": "vidsrc",
+    "name": "VidSrc",
+    "description": "HTTP Streaming - Movies and TV",
+    "version": "1.0.0",
+    "author": "HTTP Streaming",
+    "filename": "providers/vidsrc.js",
+    "enabled": true,
+    "supportedTypes": [
+      "movie",
+      "tv"
+    ],
+    "contentLanguage": [
+      "en"
+    ],
+    "formats": [],
+    "limited": false,
+    "disabledPlatforms": [],
+    "supportsExternalPlayer": true
+  }
+]
