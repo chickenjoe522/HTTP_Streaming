@@ -2,10 +2,9 @@
   "id": "com.httpstreaming.vidsrc",
   "version": "1.0.0",
   "name": "HTTP Streaming",
-  "description": "VidSrc movie and TV series catalog",
+  "description": "VidSrc movies and TV shows",
   "resources": [
-    "catalog",
-    "meta"
+    "catalog"
   ],
   "types": [
     "movie",
@@ -18,12 +17,7 @@
     {
       "type": "movie",
       "id": "http_movies",
-      "name": "Movies"
-    },
-    {
-      "type": "series",
-      "id": "http_series",
-      "name": "TV Shows"
+      "name": "HTTP Streaming"
     }
   ]
 }
