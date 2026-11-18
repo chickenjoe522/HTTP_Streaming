@@ -1,23 +1,24 @@
 {
   "name": "HTTP Streaming",
-  "description": "HTTP Streaming providers",
   "version": "1.0.0",
-  "providers": [
+  "scrapers": [
     {
       "id": "vidsrc",
-      "name": "VidSrc",
-      "description": "VidSrc movie and TV provider",
-      "version": "1.0.0",
-      "author": "HTTP Streaming",
+      "name": "vidsrc",
+      "description": "vidsrc direct links",
+      "version": "1.0.2",
+      "author": "Nuvio Team",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
       "filename": "providers/vidsrc.js",
       "enabled": true,
-      "supportedTypes": ["movie", "tv"],
-      "contentLanguage": ["en"],
-      "formats": ["mp4", "mkv"],
-      "limited": false,
-      "disabledPlatforms": [],
-      "supportsExternalPlayer": true
+      "formats": [
+        "mkv"
+      ],
+      "logo": "https://www.google.com/s2/favicons?domain=4khdhub.click&sz=128",
+      "contentLanguage": [
+        "en"
+      ]
     }
-  ]
-}
-
