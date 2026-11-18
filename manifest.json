@@ -1,22 +1,27 @@
-[
-  {
-    "id": "vidsrc",
-    "name": "VidSrc",
-    "description": "HTTP Streaming - Movies and TV",
-    "version": "1.0.0",
-    "author": "HTTP Streaming",
-    "filename": "providers/vidsrc.js",
-    "enabled": true,
-    "supportedTypes": [
-      "movie",
-      "tv"
-    ],
-    "contentLanguage": [
-      "en"
-    ],
-    "formats": [],
-    "limited": false,
-    "disabledPlatforms": [],
-    "supportsExternalPlayer": true
-  }
-]
+{
+  "name": "HTTP Streaming",
+  "version": "1.0.0",
+  "description": "VidSrc movie and TV scraper",
+  "author": "HTTP Streaming",
+  "scrapers": [
+    {
+      "id": "vidsrc",
+      "name": "VidSrc",
+      "description": "VidSrc movie and TV provider",
+      "version": "1.0.0",
+      "filename": "providers/vidsrc.js",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "contentLanguage": [
+        "en"
+      ],
+      "enabled": true,
+      "formats": [],
+      "limited": false,
+      "disabledPlatforms": [],
+      "supportsExternalPlayer": true
+    }
+  ]
+}
