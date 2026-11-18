@@ -3,33 +3,29 @@ import urllib.request
 from pathlib import Path
 
 # =====================================
-# HTTP STREAMING CONFIGURATION
+# HTTP STREAMING
 # =====================================
 
 ADDON_NAME = "HTTP Streaming"
-
 BASE_URL = "https://vidsrc.sh"
 
-MOVIES_URL = f"{BASE_URL}/movies/latest/page-1.json"
-SERIES_URL = f"{BASE_URL}/tvshows/latest/page-1.json"
-
-OUTPUT = Path("site")
-CATALOG_DIR = OUTPUT / "catalog"
-
-CATALOGS = {
+FEEDS = {
     "http_movies": {
-        "url": MOVIES_URL,
+        "url": f"{BASE_URL}/movies/latest/page-1.json",
         "type": "movie"
     },
     "http_series": {
-        "url": SERIES_URL,
+        "url": f"{BASE_URL}/tvshows/latest/page-1.json",
         "type": "series"
     }
 }
 
+ROOT = Path("site")
+CATALOG_DIR = ROOT / "catalog"
+
 
 # =====================================
-# DOWNLOAD JSON
+# DOWNLOAD VIDSRС JSON
 # =====================================
 
 def download_json(url):
@@ -42,49 +38,46 @@ def download_json(url):
     )
 
     with urllib.request.urlopen(request, timeout=30) as response:
-        return json.loads(response.read().decode("utf-8"))
+        return json.loads(
+            response.read().decode("utf-8")
+        )
 
 
 # =====================================
-# NORMALIZE CATALOG ENTRIES
+# NORMALIZE VIDSRС RESPONSE
 # =====================================
 
 def normalize_items(data, content_type):
-    if isinstance(data, list):
-        items = data
-    elif isinstance(data, dict):
-        items = (
-            data.get("results")
-            or data.get("items")
-            or data.get("data")
-            or []
+
+    # VidSrc uses "result", not "results".
+    items = data.get("result", [])
+
+    if not isinstance(items, list):
+        raise RuntimeError(
+            "VidSrc result field is not a list"
         )
-    else:
-        items = []
 
     output = []
+    seen = set()
 
     for item in items:
+
         if not isinstance(item, dict):
             continue
 
-        imdb_id = (
-            item.get("imdb_id")
-            or item.get("imdb")
-            or item.get("imdbId")
-        )
+        imdb_id = item.get("imdb_id")
+        title = item.get("title")
 
-        if not imdb_id or not str(imdb_id).startswith("tt"):
+        if not imdb_id or not title:
             continue
 
-        title = (
-            item.get("title")
-            or item.get("name")
-            or item.get("original_title")
-        )
-
-        if not title:
+        if not str(imdb_id).startswith("tt"):
             continue
+
+        if imdb_id in seen:
+            continue
+
+        seen.add(imdb_id)
 
         entry = {
             "id": str(imdb_id),
@@ -92,30 +85,22 @@ def normalize_items(data, content_type):
             "name": str(title)
         }
 
-        poster = (
-            item.get("poster")
-            or item.get("poster_path")
-            or item.get("image")
-        )
+        # VidSrc listing feeds provide quality
+        # and addition date, but not necessarily posters.
 
-        if poster:
-            entry["poster"] = poster
+        quality = item.get("quality")
+        added = item.get("time_added")
 
-        description = (
-            item.get("overview")
-            or item.get("description")
-        )
+        details = []
 
-        if description:
-            entry["description"] = description
+        if quality:
+            details.append(f"Quality: {quality}")
 
-        year = (
-            item.get("year")
-            or item.get("release_year")
-        )
+        if added:
+            details.append(f"Added: {added}")
 
-        if year:
-            entry["releaseInfo"] = str(year)
+        if details:
+            entry["description"] = " | ".join(details)
 
         output.append(entry)
 
@@ -127,31 +112,64 @@ def normalize_items(data, content_type):
 # =====================================
 
 def save_json(path, data):
-    path.parent.mkdir(parents=True, exist_ok=True)
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
 
     path.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2),
+        json.dumps(
+            data,
+            ensure_ascii=False,
+            indent=2
+        ),
         encoding="utf-8"
     )
 
 
 # =====================================
-# BUILD
+# BUILD CATALOGS
 # =====================================
 
 def main():
-    print("Building", ADDON_NAME)
+
+    print("=" * 40)
+    print(ADDON_NAME)
+    print("VidSrc Catalog Builder")
+    print("=" * 40)
+
+    manifest_file = Path("manifest.json")
+
+    if not manifest_file.exists():
+        raise FileNotFoundError(
+            "manifest.json not found"
+        )
 
     manifest = json.loads(
-        Path("manifest.json").read_text(encoding="utf-8")
+        manifest_file.read_text(
+            encoding="utf-8"
+        )
     )
 
-    save_json(OUTPUT / "manifest.json", manifest)
+    manifest["name"] = ADDON_NAME
 
-    for catalog_id, config in CATALOGS.items():
+    save_json(
+        ROOT / "manifest.json",
+        manifest
+    )
+
+    total = 0
+
+    for catalog_id, config in FEEDS.items():
+
+        print()
         print("Fetching:", catalog_id)
+        print("URL:", config["url"])
 
         data = download_json(config["url"])
+
+        print("Available pages:", data.get("pages"))
 
         entries = normalize_items(
             data,
@@ -160,18 +178,34 @@ def main():
 
         if not entries:
             raise RuntimeError(
-                f"No valid catalog entries received for {catalog_id}. "
-                "Check the VidSrc response format."
+                f"No valid entries for {catalog_id}. "
+                f"Response keys: {list(data.keys())}"
             )
 
+        output_file = (
+            CATALOG_DIR
+            / config["type"]
+            / f"{catalog_id}.json"
+        )
+
         save_json(
-            CATALOG_DIR / config["type"] / f"{catalog_id}.json",
+            output_file,
             {"metas": entries}
         )
 
+        print("Catalog:", catalog_id)
         print("Entries:", len(entries))
+        print("Saved:", output_file)
 
-    print("HTTP Streaming build complete.")
+        total += len(entries)
+
+    print()
+    print("=" * 40)
+    print("BUILD SUCCESSFUL")
+    print("Addon:", ADDON_NAME)
+    print("Catalogs: 2")
+    print("Total entries:", total)
+    print("=" * 40)
 
 
 if __name__ == "__main__":
