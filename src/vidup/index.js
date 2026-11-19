@@ -3,11 +3,11 @@
  *
  * 7movies.ac is a TMDB-keyed front end: /movie/{tmdbId}/watch and
  * /tv/{tmdbId}/watch. Its watch page offers several embed players;
- * this provider resolves the VidLink upstream (one of the site's own
- * player sources) through VidLink's JSON API, which returns direct
+ * this provider resolves the Vidup upstream (one of the site's own
+ * player sources) through Vidup's JSON API, which returns direct
  * mp4/HLS links plus captions — exactly what Nuvio plays.
  *
- * Flow: enc-dec.app encrypts the TMDB id -> vidlink.pro/api/b/...
+ * Flow: enc-dec.app encrypts the TMDB id -> vidup.to /api/b/...
  * No search step is needed because Nuvio hands us the TMDB id.
  */
 
@@ -18,13 +18,13 @@ const MEDIA_UA = "okhttp/4.12.0";
 const { sortByQuality, fetchWithTimeout, TtlCache } = require("../shared/provider-utils");
 const { parseMasterPlaylist } = require("../shared/hls-master-playlist-parser");
 
-const VIDLINK_API = "https://vidlink.pro/api/b";
-const ENC_API = "https://enc-dec.app/api/enc-vidlink";
+const VIDUP_API = "https://vidup.to/api/b";
+const ENC_API = "https://enc-dec.app/api/enc-vidup";
 
-const VIDLINK_HEADERS = {
+const VIDUP_HEADERS = {
   "User-Agent": UA,
-  Referer: "https://vidlink.pro/",
-  Origin: "https://vidlink.pro",
+  Referer: "https://vidup.to",
+  Origin: "https://vidup.to",
 };
 
 const LANG_CODES = {
@@ -250,16 +250,16 @@ async function getStreams(tmdbId, mediaType, season, episode) {
       encCache.set(cleanId, encHash);
     }
 
-    // Step 2: Query upstream VidLink JSON API
+    // Step 2: Query upstream Vidup JSON API
     const apiUrl = normType === "tv"
-      ? `${VIDLINK_API}/tv/${encHash}/${s}/${ep}`
-      : `${VIDLINK_API}/movie/${encHash}`;
+      ? `${VIDUP_API}/tv/${encHash}/${s}/${ep}`
+      : `${VIDUP_API}/movie/${encHash}`;
 
     let data;
     try {
-      data = await fetchJson(apiUrl, VIDLINK_HEADERS);
+      data = await fetchJson(apiUrl, VIDUP_HEADERS);
     } catch (e) {
-      // A definitive HTTP answer (e.g. 404: title not on VidLink) is a miss worth remembering;
+      // A definitive HTTP answer (e.g. 404: title not on Vidup is a miss worth remembering;
       // timeouts and network errors are not, so the next request tries again.
       if (/^HTTP \d+/.test(e.message || "")) streamCache.set(cacheKey, [], EMPTY_TTL_MS);
       throw e;
@@ -309,7 +309,7 @@ async function getStreams(tmdbId, mediaType, season, episode) {
       const plHeaders = playbackHeaders(null, stream);
       const expanded = await expandPlaylist(
         stream.playlist,
-        plHeaders || VIDLINK_HEADERS,
+        plHeaders || VIDUP_HEADERS,
         subtitles,
         title
       );
