@@ -1,0 +1,779 @@
+/**
+ * flystream - Built from src/flystream/
+ */
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __commonJS = (cb, mod) => function __require() {
+  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+};
+var __async = (__this, __arguments, generator) => {
+  return new Promise((resolve, reject) => {
+    var fulfilled = (value) => {
+      try {
+        step(generator.next(value));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    var rejected = (value) => {
+      try {
+        step(generator.throw(value));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    var step = (x) => x.done ? resolve(x.value) : Promise.resolve(x.value).then(fulfilled, rejected);
+    step((generator = generator.apply(__this, __arguments)).next());
+  });
+};
+
+// src/shared/provider-utils.js
+var require_provider_utils = __commonJS({
+  "src/shared/provider-utils.js"(exports2, module2) {
+    var QUALITY_ORDER = {
+      "4K": 6,
+      "1440p": 5,
+      "1080p": 4,
+      "720p": 3,
+      "480p": 2,
+      "360p": 1,
+      Auto: 0,
+      Unknown: -1
+    };
+    var HEIGHT_STEPS = [
+      [360, 1],
+      [480, 2],
+      [720, 3],
+      [1080, 4],
+      [1440, 5],
+      [2160, 6]
+    ];
+    function qualityRank(quality) {
+      if (Object.prototype.hasOwnProperty.call(QUALITY_ORDER, quality))
+        return QUALITY_ORDER[quality];
+      const m = /^(\d{3,4})p$/.exec(String(quality));
+      if (m) {
+        const h = parseInt(m[1], 10);
+        for (let i = 1; i < HEIGHT_STEPS.length; i++) {
+          const [h0, r0] = HEIGHT_STEPS[i - 1];
+          const [h1, r1] = HEIGHT_STEPS[i];
+          if (h > h0 && h < h1)
+            return r0 + (h - h0) / (h1 - h0) * (r1 - r0);
+        }
+      }
+      return -2;
+    }
+    function sortByQuality2(streams) {
+      return streams.sort((a, b) => qualityRank(b.quality) - qualityRank(a.quality));
+    }
+    function withTimeout2(promise, ms, label) {
+      if (typeof setTimeout !== "function")
+        return promise;
+      let timer;
+      const timeoutPromise = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error((label || "Timeout") + " " + ms + "ms")), ms);
+      });
+      return Promise.race([promise, timeoutPromise]).then(
+        (value) => {
+          if (typeof clearTimeout === "function")
+            clearTimeout(timer);
+          return value;
+        },
+        (err) => {
+          if (typeof clearTimeout === "function")
+            clearTimeout(timer);
+          throw err;
+        }
+      );
+    }
+    function fetchWithTimeout(url, init, ms, label) {
+      if (typeof AbortController !== "function" || typeof setTimeout !== "function") {
+        return withTimeout2(fetch(url, init), ms, label);
+      }
+      const controller = new AbortController();
+      const opts = Object.assign({}, init || {}, { signal: controller.signal });
+      return withTimeout2(fetch(url, opts), ms, label).catch((err) => {
+        controller.abort();
+        throw err;
+      });
+    }
+    var TtlCache2 = class {
+      constructor(limit, defaultTtlMs) {
+        this.limit = limit;
+        this.defaultTtlMs = defaultTtlMs;
+        this.map = /* @__PURE__ */ new Map();
+      }
+      get(key) {
+        const entry = this.map.get(key);
+        if (!entry)
+          return void 0;
+        if (entry.expiresAt <= Date.now()) {
+          this.map.delete(key);
+          return void 0;
+        }
+        this.map.delete(key);
+        this.map.set(key, entry);
+        return entry.value;
+      }
+      has(key) {
+        return this.get(key) !== void 0;
+      }
+      set(key, value, ttlMs) {
+        if (this.map.has(key))
+          this.map.delete(key);
+        else if (this.map.size >= this.limit)
+          this.map.delete(this.map.keys().next().value);
+        this.map.set(key, { value, expiresAt: Date.now() + (ttlMs || this.defaultTtlMs) });
+      }
+      delete(key) {
+        this.map.delete(key);
+      }
+      get size() {
+        return this.map.size;
+      }
+    };
+    module2.exports = { QUALITY_ORDER, qualityRank, sortByQuality: sortByQuality2, withTimeout: withTimeout2, fetchWithTimeout, TtlCache: TtlCache2 };
+  }
+});
+
+// src/flystream/flystream-api-streams.js
+var require_flystream_api_streams = __commonJS({
+  "src/flystream/flystream-api-streams.js"(exports2, module2) {
+    var { withTimeout: withTimeout2, fetchWithTimeout } = require_provider_utils();
+    var API_BASE = "https://flystream.net";
+    var BROWSER_UA2 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+    var API_HEADERS = {
+      "User-Agent": BROWSER_UA2,
+      Referer: API_BASE + "/",
+      Accept: "application/json"
+    };
+    var PLAYBACK_HEADERS = {
+      "User-Agent": BROWSER_UA2,
+      Referer: API_BASE + "/"
+    };
+    var API_TIMEOUT_MS = 5e3;
+    function randomViewerId() {
+      let out = "";
+      for (let i = 0; i < 32; i++)
+        out += Math.floor(Math.random() * 16).toString(16);
+      return out;
+    }
+    function buildApiParams({ mediaType, title, tmdbId, imdbId, year, season, episode, viewerId }) {
+      const isTv = mediaType === "tv";
+      const params = [
+        ["type", isTv ? "tv" : "movie"],
+        ["viewerId", viewerId || randomViewerId()],
+        ["title", title || ""]
+      ];
+      if (tmdbId != null && tmdbId !== "")
+        params.push(["tmdbId", String(tmdbId)]);
+      if (imdbId)
+        params.push(["imdb", String(imdbId)]);
+      if (year != null && year !== "")
+        params.push(["year", String(year)]);
+      if (isTv && season != null)
+        params.push(["season", String(season)]);
+      if (isTv && episode != null)
+        params.push(["episode", String(episode)]);
+      return params;
+    }
+    function buildApiUrl(params) {
+      const qs = params.map(([k, v]) => encodeURIComponent(k) + "=" + encodeURIComponent(v)).join("&");
+      return `${API_BASE}/api/streams?${qs}`;
+    }
+    function normalizeQuality(raw) {
+      const q = String(raw || "");
+      if (/2160|4k|uhd/i.test(q))
+        return "4K";
+      if (/1440/.test(q))
+        return "1440p";
+      if (/1080/.test(q))
+        return "1080p";
+      if (/720/.test(q))
+        return "720p";
+      if (/480/.test(q))
+        return "480p";
+      if (/360/.test(q))
+        return "360p";
+      return "Auto";
+    }
+    function str(v) {
+      return v == null ? "" : String(v);
+    }
+    function mapApiStreams(data, fallbackTitle, session) {
+      const list = data && Array.isArray(data.streams) ? data.streams : [];
+      const streams = [];
+      const seen = /* @__PURE__ */ new Set();
+      const ua = session && session.userAgent || BROWSER_UA2;
+      const playbackHeaders = {
+        "User-Agent": ua,
+        Referer: API_BASE + "/"
+      };
+      if (session && session.cookie) {
+        playbackHeaders["Cookie"] = session.cookie;
+      }
+      for (const s of list) {
+        if (!s || typeof s !== "object")
+          continue;
+        const rawUrl = str(s.url);
+        if (!rawUrl)
+          continue;
+        const url = rawUrl.startsWith("/") ? API_BASE + rawUrl : rawUrl;
+        if (!/^https?:\/\//i.test(url) || seen.has(url))
+          continue;
+        seen.add(url);
+        const qualityLabel = str(s.quality) || "Auto";
+        const codec = str(s.videoCodec);
+        const size = str(s.size);
+        const name = str(s.name) || str(s.title) || fallbackTitle || "Stream";
+        const bucket = /^s\d{1,2}$/i.test(str(s.sourceBucket)) ? " " + str(s.sourceBucket).toUpperCase() : "";
+        const details = [qualityLabel, codec ? codec.toUpperCase() : "", size].filter(Boolean).join(" \xB7 ");
+        const stream = {
+          name: `FlyStream${bucket} - ${qualityLabel}`,
+          title: `FlyStream ${name}
+${details || "Direct HLS Stream"}`,
+          url,
+          quality: normalizeQuality(qualityLabel),
+          headers: playbackHeaders,
+          behaviorHints: {
+            notWebReady: true,
+            proxyHeaders: { request: playbackHeaders }
+          },
+          subtitles: []
+        };
+        if (size)
+          stream.size = size;
+        streams.push(stream);
+      }
+      return streams;
+    }
+    var BROWSER_API_TIMEOUT_MS = 6500;
+    function hostChallengeBrowser() {
+      return typeof challengeBrowser !== "undefined" && challengeBrowser && typeof challengeBrowser.execute === "function" ? challengeBrowser : null;
+    }
+    var BROWSER_ORIGIN_PAGE = API_BASE + "/robots.txt";
+    function inPageFetchJs(path) {
+      return "(async () => { const r = await fetch(" + JSON.stringify(path) + ", { headers: { Accept: 'application/json' }, credentials: 'same-origin' }); return JSON.stringify({ status: r.status, body: await r.text() }); })()";
+    }
+    function parseBrowserResult(cb, r, title) {
+      return __async(this, null, function* () {
+        const res = JSON.parse(String(r && r.result || ""));
+        if (res.status !== 200)
+          return { ok: false, reason: `browser HTTP ${res.status}` };
+        const cookie = r && r.cookies || (typeof cb.getCookies === "function" ? yield cb.getCookies() : "");
+        const userAgent = r && r.userAgent || (typeof cb.getUserAgent === "function" ? yield cb.getUserAgent() : BROWSER_UA2);
+        return { ok: true, streams: mapApiStreams(JSON.parse(res.body), title, { cookie, userAgent }), via: "browser" };
+      });
+    }
+    function fetchViaHostBrowser(cb, url, title, timeoutMs) {
+      return __async(this, null, function* () {
+        const budget = timeoutMs || BROWSER_API_TIMEOUT_MS;
+        const work = Promise.resolve().then(
+          () => cb.execute(BROWSER_ORIGIN_PAGE, { reuse: true, evaluateJs: inPageFetchJs(url.slice(API_BASE.length)), timeoutMs: budget })
+        ).then((r) => parseBrowserResult(cb, r, title));
+        try {
+          return yield withTimeout2(work, budget + 500, "FlyStream API (browser)");
+        } catch (err) {
+          const reason = "browser: " + String(err && err.message || err);
+          const timedOut = /FlyStream API \(browser\) \d+ms/.test(reason);
+          return timedOut ? { ok: false, reason, late: work.catch(() => null) } : { ok: false, reason };
+        }
+      });
+    }
+    var BUILD_COMPANION_URL = true ? "" : "";
+    var COMPANION_TIMEOUT_MS = 8e3;
+    function splitUrls(v) {
+      return v ? String(v).split(",").map((u) => u.trim().replace(/\/+$/, "")).filter(Boolean) : [];
+    }
+    function getCompanionCandidates() {
+      const envUrl = typeof process !== "undefined" && process.env ? process.env.FLYSTREAM_COMPANION_URL : "";
+      return [...new Set(splitUrls(BUILD_COMPANION_URL).concat(splitUrls(envUrl)))];
+    }
+    function queryCompanion(host, qs) {
+      return __async(this, null, function* () {
+        const endpoint = `${host}/companion/flystream?${qs}`;
+        console.log(`[FlyStream] Querying companion: ${endpoint}`);
+        const res = yield fetchWithTimeout(endpoint, void 0, COMPANION_TIMEOUT_MS, "FlyStream Companion");
+        if (!res || !res.ok)
+          throw new Error(`HTTP ${res && res.status}`);
+        const data = yield res.json();
+        if (!data || !data.ok || !Array.isArray(data.streams) || data.streams.length === 0) {
+          throw new Error("no streams");
+        }
+        return { ok: true, streams: data.streams, via: "companion" };
+      });
+    }
+    function firstSuccess(promises) {
+      return new Promise((resolve) => {
+        let pending = promises.length;
+        if (!pending)
+          return resolve(null);
+        promises.forEach(
+          (p) => p.then(resolve, (err) => {
+            console.warn(`[FlyStream] Companion failed: ${err && err.message || err}`);
+            if (--pending === 0)
+              resolve(null);
+          })
+        );
+      });
+    }
+    function fetchViaCompanion(query) {
+      return __async(this, null, function* () {
+        const candidates = getCompanionCandidates();
+        if (!candidates.length)
+          return null;
+        const qs = buildApiParams(query).map(([k, v]) => encodeURIComponent(k) + "=" + encodeURIComponent(v)).join("&");
+        const result = yield firstSuccess(candidates.map((host) => queryCompanion(host, qs)));
+        if (result)
+          console.log(`[FlyStream] Companion returned ${result.streams.length} stream(s)`);
+        return result;
+      });
+    }
+    function fetchApiStreams2(query, opts) {
+      return __async(this, null, function* () {
+        const cb = hostChallengeBrowser();
+        if (cb) {
+          const url2 = buildApiUrl(buildApiParams(query));
+          return fetchViaHostBrowser(cb, url2, query.title, opts && opts.browserTimeoutMs);
+        }
+        const companionResult = opts && opts.skipCompanion ? null : yield fetchViaCompanion(query);
+        if (companionResult && companionResult.ok) {
+          return companionResult;
+        }
+        const url = buildApiUrl(buildApiParams(query));
+        try {
+          const res = yield fetchWithTimeout(url, { headers: API_HEADERS }, API_TIMEOUT_MS, "FlyStream API");
+          if (res.status !== 200)
+            return { ok: false, reason: `HTTP ${res.status}` };
+          const data = JSON.parse(yield res.text());
+          return { ok: true, streams: mapApiStreams(data, query.title) };
+        } catch (err) {
+          return { ok: false, reason: String(err && err.message || err) };
+        }
+      });
+    }
+    module2.exports = {
+      API_BASE,
+      BROWSER_ORIGIN_PAGE,
+      PLAYBACK_HEADERS,
+      randomViewerId,
+      buildApiParams,
+      buildApiUrl,
+      normalizeQuality,
+      mapApiStreams,
+      fetchApiStreams: fetchApiStreams2,
+      getCompanionCandidates
+    };
+  }
+});
+
+// src/flystream/tmdb-title-metadata.js
+var require_tmdb_title_metadata = __commonJS({
+  "src/flystream/tmdb-title-metadata.js"(exports2, module2) {
+    var { fetchWithTimeout, TtlCache: TtlCache2 } = require_provider_utils();
+    var TMDB_PROXY = "https://db.wecollege.net/3";
+    var META_TIMEOUT_MS = 2e3;
+    var META_TTL_MS = 6 * 60 * 60 * 1e3;
+    var MISS_TTL_MS = 5 * 60 * 1e3;
+    var metaCache = new TtlCache2(200, META_TTL_MS);
+    function pickTitleMetadata(data, mediaType) {
+      if (!data || typeof data !== "object")
+        return {};
+      const isTv = mediaType === "tv";
+      const title = (isTv ? data.name || data.original_name : data.title || data.original_title) || void 0;
+      const date = (isTv ? data.first_air_date : data.release_date) || "";
+      const yearMatch = /^(\d{4})/.exec(String(date));
+      const imdb = data.external_ids && data.external_ids.imdb_id || data.imdb_id || void 0;
+      return {
+        title: title ? String(title) : void 0,
+        year: yearMatch ? parseInt(yearMatch[1], 10) : void 0,
+        imdbId: imdb && /^tt\d+$/.test(imdb) ? imdb : void 0
+      };
+    }
+    function fetchTitleMetadata2(tmdbId, mediaType) {
+      return __async(this, null, function* () {
+        const key = `${mediaType}:${tmdbId}`;
+        const cached = metaCache.get(key);
+        if (cached)
+          return cached;
+        let meta = {};
+        try {
+          const url = `${TMDB_PROXY}/${mediaType}/${encodeURIComponent(tmdbId)}?append_to_response=external_ids`;
+          const res = yield fetchWithTimeout(
+            url,
+            { headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" } },
+            META_TIMEOUT_MS,
+            "FlyStream TMDB meta"
+          );
+          if (res.ok)
+            meta = pickTitleMetadata(yield res.json(), mediaType);
+        } catch (err) {
+          console.warn("[FlyStream] title metadata lookup failed:", err.message || err);
+        }
+        metaCache.set(key, meta, meta.title ? META_TTL_MS : MISS_TTL_MS);
+        return meta;
+      });
+    }
+    module2.exports = { fetchTitleMetadata: fetchTitleMetadata2, pickTitleMetadata };
+  }
+});
+
+// src/shared/hls-master-playlist-parser.js
+var require_hls_master_playlist_parser = __commonJS({
+  "src/shared/hls-master-playlist-parser.js"(exports2, module2) {
+    var STREAM_INF_RE = /#EXT-X-STREAM-INF:([^\r\n]*)\r?\n\s*([^\s#][^\r\n]*)/g;
+    var RESOLUTION_RE = /(?:^|,)RESOLUTION=(\d+)x(\d+)/;
+    var BANDWIDTH_RE = /(?:^|,)BANDWIDTH=(\d+)/;
+    function resolveAgainst(url, base) {
+      if (!url || url.startsWith("http"))
+        return url;
+      try {
+        return new URL(url, base).toString();
+      } catch (e) {
+        return url;
+      }
+    }
+    function parseMasterPlaylist(text, playlistUrl) {
+      const variants = [];
+      STREAM_INF_RE.lastIndex = 0;
+      let match;
+      while ((match = STREAM_INF_RE.exec(text)) !== null) {
+        const res = RESOLUTION_RE.exec(match[1]);
+        const bw = BANDWIDTH_RE.exec(match[1]);
+        variants.push({
+          url: resolveAgainst(match[2].trim(), playlistUrl),
+          width: res ? parseInt(res[1], 10) : null,
+          height: res ? parseInt(res[2], 10) : null,
+          bandwidth: bw ? parseInt(bw[1], 10) : null
+        });
+      }
+      return variants;
+    }
+    module2.exports = { parseMasterPlaylist, resolveAgainst };
+  }
+});
+
+// src/shared/hls-variant-playlist.js
+var require_hls_variant_playlist = __commonJS({
+  "src/shared/hls-variant-playlist.js"(exports2, module2) {
+    var VARIANT_BASE_TOKEN = "dsp-variant-base:";
+    var VARIANT_PATH = "/hls/flystream/variant.m3u8";
+    var FLYSTREAM_VARIANT_RE = /^https:\/\/flystream\.net\/source-hls\/[0-9a-f]{32}\/asset\/[A-Za-z0-9_-]{8,2048}\.ts$/;
+    function buildVariantUrl(variantUrl, bandwidth, width, height) {
+      let qs = "u=" + encodeURIComponent(variantUrl) + "&b=" + (bandwidth > 0 ? Math.floor(bandwidth) : 1);
+      if (width > 0 && height > 0)
+        qs += "&r=" + width + "x" + height;
+      return VARIANT_BASE_TOKEN + VARIANT_PATH + "?" + qs;
+    }
+    function resolveVariantUrl(url, baseUrl) {
+      if (typeof url !== "string" || url.indexOf(VARIANT_BASE_TOKEN) !== 0)
+        return url;
+      return (baseUrl || "").replace(/\/+$/, "") + url.slice(VARIANT_BASE_TOKEN.length);
+    }
+    function renderVariantPlaylist(query) {
+      const u = typeof query.u === "string" ? query.u : "";
+      const b = typeof query.b === "string" ? query.b : "";
+      const r = typeof query.r === "string" ? query.r : "";
+      if (!FLYSTREAM_VARIANT_RE.test(u) || !/^\d{1,10}$/.test(b) || r && !/^\d{2,5}x\d{2,5}$/.test(r)) {
+        return { status: 400, body: "#EXTM3U\n# invalid variant\n" };
+      }
+      const inf = "#EXT-X-STREAM-INF:BANDWIDTH=" + b + (r ? ",RESOLUTION=" + r : "");
+      return { status: 200, body: "#EXTM3U\n#EXT-X-VERSION:4\n" + inf + "\n" + u + "\n" };
+    }
+    module2.exports = { VARIANT_BASE_TOKEN, VARIANT_PATH, FLYSTREAM_VARIANT_RE, buildVariantUrl, resolveVariantUrl, renderVariantPlaylist };
+  }
+});
+
+// src/flystream/flystream-hls-variant-expansion.js
+var require_flystream_hls_variant_expansion = __commonJS({
+  "src/flystream/flystream-hls-variant-expansion.js"(exports2, module2) {
+    var { fetchWithTimeout } = require_provider_utils();
+    var { parseMasterPlaylist } = require_hls_master_playlist_parser();
+    var { FLYSTREAM_VARIANT_RE, buildVariantUrl } = require_hls_variant_playlist();
+    function variantRowUrl(v) {
+      if (/\.m3u8(?:[?#]|$)/i.test(v.url))
+        return v.url;
+      if (FLYSTREAM_VARIANT_RE.test(v.url))
+        return buildVariantUrl(v.url, v.bandwidth, v.width, v.height);
+      return null;
+    }
+    var SEPARATE_AUDIO_RE = /#EXT-X-MEDIA:[^\r\n]*TYPE=AUDIO[^\r\n]*URI=/;
+    function qualityFromResolution(width, height) {
+      const byHeight = (h) => h >= 2e3 ? 2160 : h >= 1300 ? 1440 : h >= 1e3 ? 1080 : h >= 700 ? 720 : h >= 460 ? 480 : h ? 360 : 0;
+      const byWidth = (w) => w >= 3200 ? 2160 : w >= 2400 ? 1440 : w >= 1700 ? 1080 : w >= 1100 ? 720 : w >= 800 ? 480 : w ? 360 : 0;
+      const p = Math.max(byHeight(height || 0), byWidth(width || 0));
+      if (!p)
+        return null;
+      return p === 2160 ? "4K" : p + "p";
+    }
+    function namePrefix(name) {
+      const i = name.lastIndexOf(" - ");
+      return i > 0 ? name.slice(0, i) : name;
+    }
+    function titleFor(stream, label, extra) {
+      const lines = String(stream.title || "").split("\n");
+      const head = lines[0].replace(/ · (?:\d{3,4}p|4K|Auto)$/i, "");
+      const rest = (lines[1] || "").split(" \xB7 ").slice(1);
+      return [head, [label].concat(extra || [], rest).filter(Boolean).join(" \xB7 ")].join("\n");
+    }
+    function expandStream(stream, timeoutMs) {
+      return __async(this, null, function* () {
+        if (!/\.m3u8(?:[?#]|$)/i.test(stream.url))
+          return [stream];
+        try {
+          const res = yield fetchWithTimeout(stream.url, { headers: stream.headers || {} }, timeoutMs, "FlyStream master");
+          if (!res || !res.ok)
+            return [stream];
+          const text = yield res.text();
+          if (SEPARATE_AUDIO_RE.test(text))
+            return [stream];
+          const variants = parseMasterPlaylist(text, stream.url).filter((v) => v.url && (v.width || v.height));
+          if (variants.length < 2)
+            return [stream];
+          const urls = variants.map(variantRowUrl);
+          if (urls.some((u) => !u))
+            return [stream];
+          const prefix = namePrefix(stream.name);
+          const rows = [];
+          let top = null;
+          for (let i = 0; i < variants.length; i++) {
+            const v = variants[i];
+            const q = qualityFromResolution(v.width, v.height);
+            if (!q)
+              continue;
+            if (!top)
+              top = q;
+            rows.push(
+              Object.assign({}, stream, {
+                name: `${prefix} - ${q}`,
+                title: titleFor(stream, q, [v.width && v.height ? `${v.width}\xD7${v.height}` : ""]),
+                url: urls[i],
+                quality: q
+              })
+            );
+          }
+          if (rows.length < 2)
+            return [stream];
+          const best = rows.reduce((a, b) => rank(b.quality) > rank(a.quality) ? b : a).quality;
+          rows.push(
+            Object.assign({}, stream, {
+              name: `${prefix} - Auto`,
+              title: titleFor(stream, `Auto (up to ${best})`),
+              quality: "Auto"
+            })
+          );
+          return rows;
+        } catch (_) {
+          return [stream];
+        }
+      });
+    }
+    function rank(q) {
+      return q === "4K" ? 2160 : parseInt(q, 10) || 0;
+    }
+    function expandHlsVariants2(streams, timeoutMs) {
+      return __async(this, null, function* () {
+        const parts = yield Promise.all(streams.map((s) => expandStream(s, timeoutMs)));
+        const out = [];
+        const seen = /* @__PURE__ */ new Set();
+        for (const part of parts) {
+          for (const s of part) {
+            const key = s.url + "|" + s.quality;
+            if (seen.has(key))
+              continue;
+            seen.add(key);
+            out.push(s);
+          }
+        }
+        return out;
+      });
+    }
+    module2.exports = { expandHlsVariants: expandHlsVariants2, qualityFromResolution };
+  }
+});
+
+// src/flystream/index.js
+var BROWSER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+var BASE_URL = "https://flystream.net";
+var HEADERS = {
+  "User-Agent": BROWSER_UA,
+  Referer: BASE_URL + "/",
+  Origin: BASE_URL,
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
+};
+var { sortByQuality, withTimeout, TtlCache } = require_provider_utils();
+var { fetchApiStreams } = require_flystream_api_streams();
+var { fetchTitleMetadata } = require_tmdb_title_metadata();
+var { expandHlsVariants } = require_flystream_hls_variant_expansion();
+var LOOKUP_BUDGET_MS = 8e3;
+var MIN_SPLIT_MS = 600;
+var MAX_SPLIT_MS = 2500;
+var MAX_CACHE_SIZE = 100;
+var CACHE_TTL_MS = 10 * 60 * 1e3;
+var EMPTY_TTL_MS = 5 * 60 * 1e3;
+var FAILURE_TTL_MS = 30 * 1e3;
+var PAGE_TIMEOUT_MS = 5e3;
+var streamCache = new TtlCache(MAX_CACHE_SIZE, CACHE_TTL_MS);
+var inflight = /* @__PURE__ */ new Map();
+function fetchPageDOM(url, timeoutMs) {
+  return __async(this, null, function* () {
+    try {
+      return yield withTimeout(loadPage(url), timeoutMs || PAGE_TIMEOUT_MS, "FlyStream page");
+    } catch (err) {
+      console.error("[FlyStream] fetchPageDOM failed:", err.message || err);
+      return null;
+    }
+  });
+}
+function loadPage(url) {
+  return __async(this, null, function* () {
+    if (typeof challengeBrowser !== "undefined" && challengeBrowser && typeof challengeBrowser.execute === "function") {
+      try {
+        const response = yield challengeBrowser.execute(url, {
+          method: "GET",
+          headers: { "User-Agent": BROWSER_UA },
+          evaluateJs: "document.documentElement.outerHTML",
+          waitForSelector: "body"
+        });
+        if (response && response.result) {
+          return response.result;
+        }
+      } catch (cbErr) {
+        console.warn("[FlyStream] challengeBrowser error, falling back to fetch:", cbErr.message || cbErr);
+      }
+    }
+    const res = yield fetch(url, {
+      method: "GET",
+      headers: HEADERS,
+      cache: "no-store"
+    });
+    if (res.status === 403 || res.status === 401) {
+      console.warn(`[FlyStream] Endpoint gated (${res.status}) on ${url}`);
+      return null;
+    }
+    if (!res.ok) {
+      return null;
+    }
+    return yield res.text();
+  });
+}
+function search(query) {
+  return __async(this, null, function* () {
+    try {
+      const searchUrl = `${BASE_URL}/search?q=${encodeURIComponent(query)}`;
+      const htmlContent = yield fetchPageDOM(searchUrl);
+      if (!htmlContent)
+        return [];
+      const results = [];
+      const stateMatch = htmlContent.match(/__FLYCAST_DATA__\s*=\s*(\{.*?\});/);
+      if (stateMatch) {
+        try {
+          const pageData = JSON.parse(stateMatch[1]);
+          if (pageData && Array.isArray(pageData.results)) {
+            return pageData.results.map((item) => ({
+              title: item.title || item.name,
+              url: `${BASE_URL}/${item.media_type || "movie"}/${item.id}`,
+              poster: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : "",
+              type: item.media_type === "tv" ? "tv" : "movie",
+              id: item.id
+            }));
+          }
+        } catch (e) {
+        }
+      }
+      const cardRegex = /<a\s+href="\/([^"]+)"[^>]*class="[^"]*card[^"]*"[^>]*([\s\S]*?)<\/a>/g;
+      let match;
+      while ((match = cardRegex.exec(htmlContent)) !== null) {
+        const path = match[1];
+        const innerHtml = match[2];
+        const titleMatch = innerHtml.match(/class="title"[^>]*>([^<]+)/);
+        const imgMatch = innerHtml.match(/src="([^"]+)"/);
+        if (path && titleMatch) {
+          const isTv = path.startsWith("tv/");
+          results.push({
+            title: titleMatch[1].trim(),
+            url: `${BASE_URL}/${path}`,
+            poster: imgMatch ? imgMatch[1] : "",
+            type: isTv ? "tv" : "movie"
+          });
+        }
+      }
+      return results;
+    } catch (err) {
+      console.error("[FlyStream] Search error:", err.message || err);
+      return [];
+    }
+  });
+}
+function getStreams(tmdbId, mediaType = "movie", season = 1, episode = 1, opts) {
+  return __async(this, null, function* () {
+    if (!tmdbId)
+      return [];
+    const normType = mediaType === "series" || mediaType === "tv" ? "tv" : "movie";
+    const s = normType === "tv" ? season || 1 : null;
+    const e = normType === "tv" ? episode || 1 : null;
+    const cacheKey = `${normType}:${tmdbId}:${s}:${e}`;
+    const cached = streamCache.get(cacheKey);
+    if (cached)
+      return cached;
+    const pending = inflight.get(cacheKey);
+    if (pending)
+      return pending;
+    const work = resolveStreams(tmdbId, normType, s, e, cacheKey, opts).finally(() => inflight.delete(cacheKey));
+    inflight.set(cacheKey, work);
+    return work;
+  });
+}
+function splitVariants(result, startedAt, opts) {
+  return __async(this, null, function* () {
+    if (!result.ok)
+      return [];
+    if (!(opts && opts.splitVariants) || !result.streams.length || result.via === "companion")
+      return result.streams;
+    const left = startedAt ? LOOKUP_BUDGET_MS - (Date.now() - startedAt) : MAX_SPLIT_MS;
+    if (left < MIN_SPLIT_MS)
+      return result.streams;
+    return expandHlsVariants(result.streams, Math.min(MAX_SPLIT_MS, left));
+  });
+}
+function resolveStreams(tmdbId, normType, s, e, cacheKey, opts) {
+  return __async(this, null, function* () {
+    const startedAt = Date.now();
+    try {
+      const given = opts && opts.meta;
+      const meta = given && given.title ? given : yield fetchTitleMetadata(String(tmdbId), normType);
+      const result = yield fetchApiStreams({
+        mediaType: normType,
+        title: meta.title,
+        tmdbId,
+        imdbId: meta.imdbId,
+        year: meta.year,
+        season: s,
+        episode: e
+      }, opts);
+      if (!result.ok)
+        console.warn(`[FlyStream] API call failed (${result.reason}) for ${cacheKey}`);
+      if (result.late) {
+        result.late.then((late) => late && late.ok && late.streams.length ? splitVariants(late, 0, opts) : null).then((lateStreams) => {
+          if (lateStreams && lateStreams.length) {
+            streamCache.set(cacheKey, sortByQuality(lateStreams), CACHE_TTL_MS);
+            console.log(`[FlyStream] late result cached: ${lateStreams.length} stream(s) for ${cacheKey}`);
+          }
+        }).catch(() => {
+        });
+      }
+      const streams = sortByQuality(yield splitVariants(result, startedAt, opts));
+      const ttl = !result.ok ? FAILURE_TTL_MS : streams.length ? CACHE_TTL_MS : EMPTY_TTL_MS;
+      streamCache.set(cacheKey, streams, ttl);
+      console.log(`[FlyStream] ${streams.length} stream(s) for ${cacheKey}`);
+      return streams;
+    } catch (err) {
+      console.error("[FlyStream] getStreams error:", err.message || err);
+      return [];
+    }
+  });
+}
+module.exports = {
+  getStreams,
+  search,
+  fetchPageDOM
+};
