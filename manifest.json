@@ -23,6 +23,27 @@
         "en"
       ]
     },
+     {
+      "id": "flystream",
+      "name": "FlyStream",
+      "description": "flystream.net sources (JSON /api/streams) - direct HLS up to 4K HEVC",
+      "version": "1.0.7",
+      "author": "Anh Pham",
+      "supportedTypes": [
+        "movie",
+        "tv"
+      ],
+      "filename": "providers/flystream.js",
+      "enabled": true,
+      "formats": [
+        "m3u8",
+        "mp4"
+      ],
+      "logo": "https://flystream.net/favicon.ico",
+      "contentLanguage": [
+        "en"
+      ]
+    },
     {
       "id": "vidup",
       "name": "vidup",
