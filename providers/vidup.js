@@ -175,12 +175,12 @@ var UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, l
 var MEDIA_UA = "okhttp/4.12.0";
 var { sortByQuality, fetchWithTimeout, TtlCache } = require_provider_utils();
 var { parseMasterPlaylist } = require_hls_master_playlist_parser();
-var VIDLINK_API = "https://vidlink.pro/api/b";
-var ENC_API = "https://enc-dec.app/api/enc-vidlink";
-var VIDLINK_HEADERS = {
+var VIDUP_API = "https://vidup.to/api/b";
+var ENC_API = "https://enc-dec.app/api/enc-vidup";
+var VIDUP_HEADERS = {
   "User-Agent": UA,
-  Referer: "https://vidlink.pro/",
-  Origin: "https://vidlink.pro"
+  Referer: "https://vidup.to/",
+  Origin: "https://vidup.to/"
 };
 var LANG_CODES = {
   english: "en",
@@ -396,10 +396,10 @@ function getStreams(tmdbId, mediaType, season, episode) {
         encHash = enc.result;
         encCache.set(cleanId, encHash);
       }
-      const apiUrl = normType === "tv" ? `${VIDLINK_API}/tv/${encHash}/${s}/${ep}` : `${VIDLINK_API}/movie/${encHash}`;
+      const apiUrl = normType === "tv" ? `${VIDUP_API}/tv/${encHash}/${s}/${ep}` : `${VVIDUP_API}/movie/${encHash}`;
       let data;
       try {
-        data = yield fetchJson(apiUrl, VIDLINK_HEADERS);
+        data = yield fetchJson(apiUrl, VIDUP_HEADERS);
       } catch (e) {
         if (/^HTTP \d+/.test(e.message || ""))
           streamCache.set(cacheKey, [], EMPTY_TTL_MS);
@@ -442,7 +442,7 @@ function getStreams(tmdbId, mediaType, season, episode) {
         const plHeaders = playbackHeaders(null, stream);
         const expanded = yield expandPlaylist(
           stream.playlist,
-          plHeaders || VIDLINK_HEADERS,
+          plHeaders || VIDUP_HEADERS,
           subtitles,
           title
         );
