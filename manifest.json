@@ -28,7 +28,7 @@
       "name": "FlyStream",
       "description": "flystream.net sources (JSON /api/streams) - direct HLS up to 4K HEVC",
       "version": "1.0.7",
-      "author": "Anh Pham",
+      "author": "chickenjoe",
       "supportedTypes": [
         "movie",
         "tv"
