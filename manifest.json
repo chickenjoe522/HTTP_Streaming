@@ -44,22 +44,22 @@
       ]
     },
     {
-      "id": "flystream",
-      "name": "FlyStream",
-      "description": "flystream.net sources (JSON /api/streams) - direct HLS up to 4K HEVC",
+      "id": "vidcore",
+      "name": "vidcore",
+      "description": "vidcore.io sources (JSON /api/streams) - direct HLS up to 4K HEVC",
       "version": "1.0.7",
       "author": "chickenjoe",
       "supportedTypes": [
         "movie",
         "tv"
       ],
-      "filename": "providers/flystream.js",
+      "filename": "providers/vidCore.js",
       "enabled": true,
       "formats": [
         "m3u8",
         "mp4"
       ],
-      "logo": "https://flystream.net/favicon.ico",
+      "logo": "https://vidcore.io/favicon.ico",
       "contentLanguage": [
         "en"
       ]
