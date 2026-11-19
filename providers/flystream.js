@@ -659,47 +659,39 @@ function loadPage(url) {
 function search(query) {
   return __async(this, null, function* () {
     try {
-      const searchUrl = `${BASE_URL}/search?q=${encodeURIComponent(query)}`;
-      const htmlContent = yield fetchPageDOM(searchUrl);
-      if (!htmlContent)
+      console.log("[FlyStream] Search query:", query);
+
+      const searchUrl =
+        `${BASE_URL}/search?q=${encodeURIComponent(query)}`;
+
+      console.log("[FlyStream] URL:", searchUrl);
+
+      const html = yield fetchPageDOM(searchUrl);
+
+      if (!html) {
+        console.log("[FlyStream] Empty page response");
         return [];
-      const results = [];
-      const stateMatch = htmlContent.match(/__FLYCAST_DATA__\s*=\s*(\{.*?\});/);
-      if (stateMatch) {
-        try {
-          const pageData = JSON.parse(stateMatch[1]);
-          if (pageData && Array.isArray(pageData.results)) {
-            return pageData.results.map((item) => ({
-              title: item.title || item.name,
-              url: `${BASE_URL}/${item.media_type || "movie"}/${item.id}`,
-              poster: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : "",
-              type: item.media_type === "tv" ? "tv" : "movie",
-              id: item.id
-            }));
-          }
-        } catch (e) {
-        }
       }
-      const cardRegex = /<a\s+href="\/([^"]+)"[^>]*class="[^"]*card[^"]*"[^>]*([\s\S]*?)<\/a>/g;
-      let match;
-      while ((match = cardRegex.exec(htmlContent)) !== null) {
-        const path = match[1];
-        const innerHtml = match[2];
-        const titleMatch = innerHtml.match(/class="title"[^>]*>([^<]+)/);
-        const imgMatch = innerHtml.match(/src="([^"]+)"/);
-        if (path && titleMatch) {
-          const isTv = path.startsWith("tv/");
-          results.push({
-            title: titleMatch[1].trim(),
-            url: `${BASE_URL}/${path}`,
-            poster: imgMatch ? imgMatch[1] : "",
-            type: isTv ? "tv" : "movie"
-          });
-        }
-      }
-      return results;
+
+      console.log("[FlyStream] HTML length:", html.length);
+      console.log(
+        "[FlyStream] HTML beginning:",
+        html.substring(0, 1500)
+      );
+
+      console.log(
+        "[FlyStream] Flycast data:",
+        html.includes("__FLYCAST_DATA__")
+      );
+
+      console.log(
+        "[FlyStream] Search query present:",
+        html.includes(query)
+      );
+
+      return [];
     } catch (err) {
-      console.error("[FlyStream] Search error:", err.message || err);
+      console.error("[FlyStream] Search diagnostic:", err);
       return [];
     }
   });
