@@ -23,53 +23,12 @@
         "en"
       ]
     },
-     {
-      "id": "flystream",
-      "name": "FlyStream",
-      "description": "flystream.net sources (JSON /api/streams) - direct HLS up to 4K HEVC",
-      "version": "1.0.7",
-      "author": "chickenjoe",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/flystream.js",
-      "enabled": true,
-      "formats": [
-        "m3u8",
-        "mp4"
-      ],
-      "logo": "https://flystream.net/favicon.ico",
-      "contentLanguage": [
-        "en"
-      ]
-    },
     {
-      "id": "vidup",
-      "name": "vidup",
-      "description": "vidup.to sources (wecollege API, mvm1-decrypted) - direct HLS up to 4K with subtitles",
-      "version": "1.0.4",
-      "author": "chickenjoe",
-      "supportedTypes": [
-        "movie",
-        "tv"
-      ],
-      "filename": "providers/vidup.js",
-      "enabled": true,
-      "formats": [
-        "m3u8"
-      ],
-      "logo": "https://www.google.com/s2/favicons?domain=vidup.to&sz=128",
-      "contentLanguage": [
-        "en"
-      ]
-    },
-        {
       "id": "movy",
       "name": "Movy",
       "description": "movy.sx sources (wecollege API, mvm1-decrypted) - direct HLS up to 4K with subtitles",
       "version": "1.0.4",
-      "author": "Anh Pham",
+      "author": "chickenjoe",
       "supportedTypes": [
         "movie",
         "tv"
@@ -85,22 +44,22 @@
       ]
     },
     {
-      "id": "vidcore",
-      "name": "vidcore",
-      "description": "vidcore.io sources (JSON /api/streams) - direct HLS up to 4K HEVC",
+      "id": "flystream",
+      "name": "FlyStream",
+      "description": "flystream.net sources (JSON /api/streams) - direct HLS up to 4K HEVC",
       "version": "1.0.7",
-      "author": "chickenjoe",
+      "author": "chickenjoe,
       "supportedTypes": [
         "movie",
         "tv"
       ],
-      "filename": "providers/vidCore.js",
+      "filename": "providers/flystream.js",
       "enabled": true,
       "formats": [
         "m3u8",
         "mp4"
       ],
-      "logo": "https://vidcore.io/favicon.ico",
+      "logo": "https://flystream.net/favicon.ico",
       "contentLanguage": [
         "en"
       ]
